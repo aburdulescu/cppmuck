@@ -15,6 +15,7 @@ import argparse
 import os
 import sys
 import subprocess
+import time
 
 
 def get_parent(cursor) -> str:
@@ -369,10 +370,16 @@ def main():
     args.build_dir = os.path.abspath(os.path.join(args.root_dir, args.build_dir))
     args.filepath = os.path.abspath(os.path.join(args.root_dir, args.filepath))
 
+    start = time.perf_counter_ns()
     all_funcs = parse_file(args.root_dir, args.build_dir, args.filepath, args.typename)
+    end = time.perf_counter_ns()
+    print("parse: %f s" % ((end - start) / 1e9))
 
     if args.typename is not None:
+        start = time.perf_counter_ns()
         generate_file(all_funcs, args.filepath)
+        end = time.perf_counter_ns()
+        print("generate: %f s" % ((end - start) / 1e9))
 
 
 if __name__ == "__main__":
