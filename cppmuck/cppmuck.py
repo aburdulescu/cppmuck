@@ -172,7 +172,10 @@ class Func:
             args += f"{arg.type} {arg.name}, "
         if args != "":
             args = args[: len(args) - 2]
-        return f"auto {self.name}({args}) -> {self.return_type}"
+        body = ""
+        if self.return_type != "void":
+            body = " return {}; "
+        return "auto %s(%s) -> %s {%s}" % (self.name, args, self.return_type, body)
 
     def full_name(self):
         full_name = ""
@@ -321,7 +324,7 @@ def main():
 
         if fn not in funcs:
             print(
-                "%s:%d %s %s %s:\n    %s"
+                "%s:%d %s %s %s %s"
                 % (
                     os.path.relpath(fn.file, args.root_dir),
                     fn.line,
