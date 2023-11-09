@@ -175,7 +175,13 @@ class Func:
         body = ""
         if self.return_type != "void":
             body = " return {}; "
-        return "auto %s(%s) -> %s {%s}" % (self.name, args, self.return_type, body)
+        return "auto %s::%s(%s) -> %s {%s}" % (
+            "::".join(self.parents),
+            self.name,
+            args,
+            self.return_type,
+            body,
+        )
 
     def full_name(self):
         full_name = ""
@@ -253,12 +259,9 @@ def main():
         print("error: cannot find the file in the compilation database")
         sys.exit(1)
 
-    funcs = []
-
     argv = argv_from_compdb(compile_command.directory, compile_command.arguments)
 
     parse_options = TranslationUnit.PARSE_SKIP_FUNCTION_BODIES
-
     try:
         tu = index.parse(
             None,
@@ -283,6 +286,8 @@ def main():
         CursorKind.FUNCTION_DECL,
         CursorKind.FUNCTION_TEMPLATE,
     ]
+
+    funcs = []
 
     for c in tu.cursor.walk_preorder():
         if not str(c.location.file).startswith(args.root_dir):
@@ -324,16 +329,31 @@ def main():
 
         if fn not in funcs:
             print(
-                "%s:%d %s %s %s"
+                "%s:%d %s %s"
                 % (
                     os.path.relpath(fn.file, args.root_dir),
                     fn.line,
                     "::".join(fn.namespaces),
-                    "::".join(fn.parents),
                     fn,
                 )
             )
             funcs.append(fn)
+
+    if args.typename is not None:
+        s = ""
+
+        for fn in funcs:
+
+            for ns in fn.namespaces:
+                s += "namespace %s {\n" % (ns)
+
+            s += "%s\n" % (fn)
+
+            for _ in fn.namespaces:
+                s += "}\n"
+
+        with open("out.cpp", "w") as f:
+            f.write(s)
 
 
 if __name__ == "__main__":
