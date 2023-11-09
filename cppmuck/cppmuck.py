@@ -17,11 +17,10 @@ import sys
 import subprocess
 
 
-def get_fn_name(cursor) -> str:
-    result = ""
+def get_parents(cursor) -> []:
+    result = []
 
     kinds = [
-        CursorKind.NAMESPACE,
         CursorKind.CLASS_DECL,
         CursorKind.CLASS_TEMPLATE,
         CursorKind.STRUCT_DECL,
@@ -31,10 +30,30 @@ def get_fn_name(cursor) -> str:
     while True:
         if t.kind not in kinds:
             break
-        result = str(t.spelling) + "::" + result
+        result.insert(0, str(t.spelling))
         t = t.semantic_parent
 
-    result += str(cursor.spelling)
+    return result
+
+
+def get_namespaces(cursor) -> []:
+    result = []
+
+    kinds = [
+        CursorKind.CLASS_DECL,
+        CursorKind.CLASS_TEMPLATE,
+        CursorKind.STRUCT_DECL,
+    ]
+
+    t = cursor.semantic_parent
+    while True:
+        if t.kind in kinds:
+            t = t.semantic_parent
+            continue
+        if t.kind != CursorKind.NAMESPACE:
+            break
+        result.insert(0, str(t.spelling))
+        t = t.semantic_parent
 
     return result
 
@@ -120,8 +139,19 @@ class Arg:
 
 
 class Func:
-    def __init__(self, name: str, args: [Arg], return_type: str, file: str, line: int):
+    def __init__(
+        self,
+        name: str,
+        parents: [str],
+        namespaces: [str],
+        args: [Arg],
+        return_type: str,
+        file: str,
+        line: int,
+    ):
         self.name = name
+        self.parents = parents
+        self.namespaces = namespaces
         self.args = args
         self.return_type = return_type
         self.file = file
@@ -143,6 +173,19 @@ class Func:
         if args != "":
             args = args[: len(args) - 2]
         return f"auto {self.name}({args}) -> {self.return_type}"
+
+    def full_name(self):
+        full_name = ""
+        if len(self.namespaces) != 0:
+            full_name += "::".join(self.namespaces)
+        if len(self.parents) != 0:
+            if full_name != "":
+                full_name += "::"
+            full_name += "::".join(self.parents)
+        if full_name != "":
+            full_name += "::"
+        full_name += self.name
+        return full_name
 
 
 def is_in_src_paths(src_paths: [str], filename: str) -> bool:
@@ -248,10 +291,9 @@ def main():
         if c.access_specifier != AccessSpecifier.PUBLIC:
             continue
 
-        fn_name = get_fn_name(c)
-        if args.typename is not None:
-            if not fn_name.startswith(args.typename):
-                continue
+        name = c.spelling
+        parents = get_parents(c)
+        namespaces = get_namespaces(c)
 
         fn_args = []
         for arg in c.get_arguments():
@@ -263,17 +305,31 @@ def main():
             )
 
         fn = Func(
-            name=fn_name,
+            name=name,
+            parents=parents,
+            namespaces=namespaces,
             args=fn_args,
             return_type=str(c.result_type.spelling),
             file=str(c.location.file),
             line=int(c.location.line),
         )
 
+        full_name = fn.full_name()
+        if args.typename is not None:
+            if not full_name.startswith(args.typename):
+                continue
+
         if fn not in funcs:
             print(
-                "%s:%d:\n    %s"
-                % (os.path.relpath(fn.file, args.root_dir), fn.line, fn)
+                "%s:%d %s %s %s:\n    %s"
+                % (
+                    os.path.relpath(fn.file, args.root_dir),
+                    fn.line,
+                    fn.namespaces,
+                    fn.parents,
+                    full_name,
+                    fn,
+                )
             )
             funcs.append(fn)
 
