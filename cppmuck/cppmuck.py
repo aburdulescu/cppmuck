@@ -199,11 +199,137 @@ class Func:
         return result
 
 
-def is_in_src_paths(src_paths: [str], filename: str) -> bool:
-    for src_path in src_paths:
-        if filename.startswith(src_path):
-            return True
-    return False
+def parse_file(root_dir: str, build_dir: str, filepath: str, typename: str) -> []:
+    try:
+        comp_db = CompilationDatabase.fromDirectory(build_dir)
+    except CompilationDatabaseError:
+        print('error loading compilation database from "%s"' % build_dir)
+        sys.exit(1)
+
+    index = Index.create()
+
+    compile_command = None
+    for v in comp_db.getAllCompileCommands():
+        filename = os.path.join(v.directory, v.filename)
+        if filename == filepath:
+            compile_command = v
+
+    if compile_command is None:
+        print("error: cannot find the file in the compilation database")
+        sys.exit(1)
+
+    argv = argv_from_compdb(compile_command.directory, compile_command.arguments)
+
+    parse_options = TranslationUnit.PARSE_SKIP_FUNCTION_BODIES
+    try:
+        tu = index.parse(
+            None,
+            args=argv[1:],
+            options=parse_options,
+        )
+    except TranslationUnitLoadError:
+        print("\nerror parsing translation unit")
+        sys.exit(1)
+
+    should_exit = False
+    for diag in tu.diagnostics:
+        print(f"\n{diag}")
+        if diag.severity == Diagnostic.Fatal or diag.severity == Diagnostic.Error:
+            should_exit = True
+    if should_exit:
+        sys.exit(1)
+
+    kinds = [
+        CursorKind.CONSTRUCTOR,
+        CursorKind.CXX_METHOD,
+        CursorKind.FUNCTION_DECL,
+        CursorKind.FUNCTION_TEMPLATE,
+    ]
+
+    all_funcs = []
+
+    for c in tu.cursor.walk_preorder():
+        if not str(c.location.file).startswith(root_dir):
+            continue
+
+        if c.kind not in kinds:
+            continue
+
+        if c.access_specifier != AccessSpecifier.PUBLIC:
+            continue
+
+        args = []
+        for arg in c.get_arguments():
+            args.append(
+                Arg(
+                    name=str(arg.spelling),
+                    type=str(arg.type.spelling),
+                )
+            )
+
+        fn = Func(
+            name=c.spelling,
+            parent=get_parent(c),
+            namespace=get_namespace(c),
+            args=args,
+            return_type=str(c.result_type.spelling),
+            file=str(c.location.file),
+            line=int(c.location.line),
+        )
+
+        if typename is not None:
+            if not fn.full_name.startswith(typename):
+                continue
+
+        if fn not in all_funcs:
+            print(
+                "%s:%d %s %s"
+                % (
+                    os.path.relpath(fn.file, root_dir),
+                    fn.line,
+                    fn.namespace,
+                    fn,
+                )
+            )
+            all_funcs.append(fn)
+
+    return all_funcs
+
+
+def generate_file(all_funcs: [Func], filepath: str):
+
+    ns_to_funcs = {}
+    for fn in all_funcs:
+        if fn.namespace not in ns_to_funcs:
+            ns_to_funcs[fn.namespace] = []
+        ns_to_funcs[fn.namespace].append(fn)
+
+    s = ""
+
+    s += "// GENERATED FILE, DO NOT EDIT!\n"
+    s += "// clang-format off\n"
+    s += "// generated with: cppmuck %s\n" % (" ".join(sys.argv[1:]))
+    s += "// clang-format on\n\n"
+
+    s += '#include "%s"\n\n' % (
+        os.path.splitext(os.path.basename(filepath))[0] + ".hpp"
+    )
+
+    for ns, funcs in ns_to_funcs.items():
+        ns_list = ns.split("::")
+
+        for v in ns_list:
+            s += "namespace %s {\n" % (v)
+        s += "\n"
+
+        for fn in funcs:
+            s += "%s\n\n" % (fn)
+
+        for _ in ns_list:
+            s += "}\n"
+
+    with open("out.cpp", "w") as f:
+        f.write(s)
 
 
 def main():
@@ -243,132 +369,10 @@ def main():
     args.build_dir = os.path.abspath(os.path.join(args.root_dir, args.build_dir))
     args.filepath = os.path.abspath(os.path.join(args.root_dir, args.filepath))
 
-    try:
-        comp_db = CompilationDatabase.fromDirectory(args.build_dir)
-    except CompilationDatabaseError:
-        print('error loading compilation database from "%s"' % args.build_dir)
-        sys.exit(1)
-
-    index = Index.create()
-
-    compile_command = None
-    for v in comp_db.getAllCompileCommands():
-        filename = os.path.join(v.directory, v.filename)
-        if filename == args.filepath:
-            compile_command = v
-
-    if compile_command is None:
-        print("error: cannot find the file in the compilation database")
-        sys.exit(1)
-
-    argv = argv_from_compdb(compile_command.directory, compile_command.arguments)
-
-    parse_options = TranslationUnit.PARSE_SKIP_FUNCTION_BODIES
-    try:
-        tu = index.parse(
-            None,
-            args=argv[1:],
-            options=parse_options,
-        )
-    except TranslationUnitLoadError:
-        print("\nerror parsing translation unit")
-        sys.exit(1)
-
-    should_exit = False
-    for diag in tu.diagnostics:
-        print(f"\n{diag}")
-        if diag.severity == Diagnostic.Fatal or diag.severity == Diagnostic.Error:
-            should_exit = True
-    if should_exit:
-        sys.exit(1)
-
-    kinds = [
-        CursorKind.CONSTRUCTOR,
-        CursorKind.CXX_METHOD,
-        CursorKind.FUNCTION_DECL,
-        CursorKind.FUNCTION_TEMPLATE,
-    ]
-
-    all_funcs = []
-
-    for c in tu.cursor.walk_preorder():
-        if not str(c.location.file).startswith(args.root_dir):
-            continue
-
-        if c.kind not in kinds:
-            continue
-
-        if c.access_specifier != AccessSpecifier.PUBLIC:
-            continue
-
-        fn_args = []
-        for arg in c.get_arguments():
-            fn_args.append(
-                Arg(
-                    name=str(arg.spelling),
-                    type=str(arg.type.spelling),
-                )
-            )
-
-        fn = Func(
-            name=c.spelling,
-            parent=get_parent(c),
-            namespace=get_namespace(c),
-            args=fn_args,
-            return_type=str(c.result_type.spelling),
-            file=str(c.location.file),
-            line=int(c.location.line),
-        )
-
-        if args.typename is not None:
-            if not fn.full_name.startswith(args.typename):
-                continue
-
-        if fn not in all_funcs:
-            print(
-                "%s:%d %s %s"
-                % (
-                    os.path.relpath(fn.file, args.root_dir),
-                    fn.line,
-                    fn.namespace,
-                    fn,
-                )
-            )
-            all_funcs.append(fn)
+    all_funcs = parse_file(args.root_dir, args.build_dir, args.filepath, args.typename)
 
     if args.typename is not None:
-        ns_to_funcs = {}
-        for fn in all_funcs:
-            if fn.namespace not in ns_to_funcs:
-                ns_to_funcs[fn.namespace] = []
-            ns_to_funcs[fn.namespace].append(fn)
-
-        s = ""
-
-        s += "// GENERATED FILE, DO NOT EDIT!\n"
-        s += "// clang-format off\n"
-        s += "// generated with: cppmuck %s\n" % (" ".join(sys.argv[1:]))
-        s += "// clang-format on\n\n"
-
-        s += '#include "%s"\n\n' % (
-            os.path.splitext(os.path.basename(args.filepath))[0] + ".hpp"
-        )
-
-        for ns, funcs in ns_to_funcs.items():
-            ns_list = ns.split("::")
-
-            for v in ns_list:
-                s += "namespace %s {\n" % (v)
-            s += "\n"
-
-            for fn in funcs:
-                s += "%s\n\n" % (fn)
-
-            for _ in ns_list:
-                s += "}\n"
-
-        with open("out.cpp", "w") as f:
-            f.write(s)
+        generate_file(all_funcs, args.filepath)
 
 
 if __name__ == "__main__":
