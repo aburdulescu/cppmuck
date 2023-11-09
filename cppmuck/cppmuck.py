@@ -297,8 +297,7 @@ def parse_file(root_dir: str, build_dir: str, filepath: str, typename: str) -> [
     return all_funcs
 
 
-def generate_file(all_funcs: [Func], filepath: str):
-
+def generate_file(all_funcs: [Func], filepath: str, output_file: str):
     ns_to_funcs = {}
     for fn in all_funcs:
         if fn.namespace not in ns_to_funcs:
@@ -329,7 +328,11 @@ def generate_file(all_funcs: [Func], filepath: str):
         for _ in ns_list:
             s += "}\n"
 
-    with open("out.cpp", "w") as f:
+    out = "out.cpp"
+    if output_file is not None:
+        out = output_file
+
+    with open(out, "w") as f:
         f.write(s)
 
 
@@ -377,7 +380,7 @@ def main():
 
     if args.typename is not None:
         start = time.perf_counter_ns()
-        generate_file(all_funcs, args.filepath)
+        generate_file(all_funcs, args.filepath, args.output_file)
         end = time.perf_counter_ns()
         print("generate: %f s" % ((end - start) / 1e9))
 
