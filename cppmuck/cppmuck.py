@@ -136,6 +136,14 @@ class Func:
             and self.return_type == other.return_type
         )
 
+    def __str__(self):
+        args = ""
+        for arg in self.args:
+            args += f"{arg.type} {arg.name}, "
+        if args != "":
+            args = args[: len(args) - 2]
+        return f"auto {self.name}({args}) -> {self.return_type}"
+
 
 def is_in_src_paths(src_paths: [str], filename: str) -> bool:
     for src_path in src_paths:
@@ -245,7 +253,7 @@ def main():
             if not fn_name.startswith(args.typename):
                 continue
 
-        fn_args = [str]
+        fn_args = []
         for arg in c.get_arguments():
             fn_args.append(
                 Arg(
@@ -263,7 +271,10 @@ def main():
         )
 
         if fn not in funcs:
-            print(os.path.relpath(fn.file, args.root_dir), fn.line, fn.name)
+            print(
+                "%s:%d:\n    %s"
+                % (os.path.relpath(fn.file, args.root_dir), fn.line, fn)
+            )
             funcs.append(fn)
 
 
