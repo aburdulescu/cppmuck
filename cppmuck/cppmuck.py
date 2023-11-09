@@ -177,11 +177,11 @@ class Func:
         body = ""
         if self.return_type != "void":
             body = " return {}; "
-        return "%s %s::%s(%s) {%s}" % (
-            self.return_type,
+        return "auto %s::%s(%s) -> %s {%s}" % (
             self.parent,
             self.name,
             args,
+            self.return_type,
             body,
         )
 
