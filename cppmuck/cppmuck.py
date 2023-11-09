@@ -17,7 +17,7 @@ import sys
 import subprocess
 
 
-def get_parents(cursor) -> []:
+def get_parent(cursor) -> str:
     result = []
 
     kinds = [
@@ -33,10 +33,10 @@ def get_parents(cursor) -> []:
         result.insert(0, str(t.spelling))
         t = t.semantic_parent
 
-    return result
+    return "::".join(result)
 
 
-def get_namespaces(cursor) -> []:
+def get_namespace(cursor) -> str:
     result = []
 
     kinds = [
@@ -55,7 +55,7 @@ def get_namespaces(cursor) -> []:
         result.insert(0, str(t.spelling))
         t = t.semantic_parent
 
-    return result
+    return "::".join(result)
 
 
 # parse the output of `cc -E -v -x c++ /dev/null` to get system include paths
@@ -142,20 +142,22 @@ class Func:
     def __init__(
         self,
         name: str,
-        parents: [str],
-        namespaces: [str],
+        parent: str,
+        namespace: [str],
         args: [Arg],
         return_type: str,
         file: str,
         line: int,
     ):
         self.name = name
-        self.parents = parents
-        self.namespaces = namespaces
+        self.parent = parent
+        self.namespace = namespace
         self.args = args
         self.return_type = return_type
         self.file = file
         self.line = line
+
+        self.full_name = self.__full_name()
 
     def __eq__(self, other):
         if not isinstance(other, Func):
@@ -176,25 +178,25 @@ class Func:
         if self.return_type != "void":
             body = " return {}; "
         return "auto %s::%s(%s) -> %s {%s}" % (
-            "::".join(self.parents),
+            self.parent,
             self.name,
             args,
             self.return_type,
             body,
         )
 
-    def full_name(self):
-        full_name = ""
-        if len(self.namespaces) != 0:
-            full_name += "::".join(self.namespaces)
-        if len(self.parents) != 0:
-            if full_name != "":
-                full_name += "::"
-            full_name += "::".join(self.parents)
-        if full_name != "":
-            full_name += "::"
-        full_name += self.name
-        return full_name
+    def __full_name(self):
+        result = ""
+        if self.namespace != "":
+            result += self.namespace
+        if self.parent != "":
+            if result != "":
+                result += "::"
+            result += self.parent
+        if result != "":
+            result += "::"
+        result += self.name
+        return result
 
 
 def is_in_src_paths(src_paths: [str], filename: str) -> bool:
@@ -287,7 +289,7 @@ def main():
         CursorKind.FUNCTION_TEMPLATE,
     ]
 
-    funcs = []
+    all_funcs = []
 
     for c in tu.cursor.walk_preorder():
         if not str(c.location.file).startswith(args.root_dir):
@@ -299,10 +301,6 @@ def main():
         if c.access_specifier != AccessSpecifier.PUBLIC:
             continue
 
-        name = c.spelling
-        parents = get_parents(c)
-        namespaces = get_namespaces(c)
-
         fn_args = []
         for arg in c.get_arguments():
             fn_args.append(
@@ -313,43 +311,55 @@ def main():
             )
 
         fn = Func(
-            name=name,
-            parents=parents,
-            namespaces=namespaces,
+            name=c.spelling,
+            parent=get_parent(c),
+            namespace=get_namespace(c),
             args=fn_args,
             return_type=str(c.result_type.spelling),
             file=str(c.location.file),
             line=int(c.location.line),
         )
 
-        full_name = fn.full_name()
         if args.typename is not None:
-            if not full_name.startswith(args.typename):
+            if not fn.full_name.startswith(args.typename):
                 continue
 
-        if fn not in funcs:
+        if fn not in all_funcs:
             print(
                 "%s:%d %s %s"
                 % (
                     os.path.relpath(fn.file, args.root_dir),
                     fn.line,
-                    "::".join(fn.namespaces),
+                    fn.namespace,
                     fn,
                 )
             )
-            funcs.append(fn)
+            all_funcs.append(fn)
 
     if args.typename is not None:
+        ns_to_funcs = {}
+        for fn in all_funcs:
+            if fn.namespace not in ns_to_funcs:
+                ns_to_funcs[fn.namespace] = []
+            ns_to_funcs[fn.namespace].append(fn)
+
         s = ""
 
-        for fn in funcs:
+        s += '#include "%s"\n\n' % (
+            os.path.splitext(os.path.basename(args.filepath))[0] + ".hpp"
+        )
 
-            for ns in fn.namespaces:
-                s += "namespace %s {\n" % (ns)
+        for ns, funcs in ns_to_funcs.items():
+            ns_list = ns.split("::")
 
-            s += "%s\n" % (fn)
+            for v in ns_list:
+                s += "namespace %s {\n" % (v)
+            s += "\n"
 
-            for _ in fn.namespaces:
+            for fn in funcs:
+                s += "%s\n\n" % (fn)
+
+            for _ in ns_list:
                 s += "}\n"
 
         with open("out.cpp", "w") as f:
