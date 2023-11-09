@@ -345,6 +345,11 @@ def main():
 
         s = ""
 
+        s += "// GENERATED FILE, DO NOT EDIT!\n"
+        s += "// clang-format off\n"
+        s += "// generated with: cppmuck %s\n" % (" ".join(sys.argv[1:]))
+        s += "// clang-format on\n\n"
+
         s += '#include "%s"\n\n' % (
             os.path.splitext(os.path.basename(args.filepath))[0] + ".hpp"
         )
