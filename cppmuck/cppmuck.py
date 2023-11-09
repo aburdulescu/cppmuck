@@ -324,13 +324,12 @@ def main():
 
         if fn not in funcs:
             print(
-                "%s:%d %s %s %s %s"
+                "%s:%d %s %s %s"
                 % (
                     os.path.relpath(fn.file, args.root_dir),
                     fn.line,
-                    fn.namespaces,
-                    fn.parents,
-                    full_name,
+                    "::".join(fn.namespaces),
+                    "::".join(fn.parents),
                     fn,
                 )
             )
