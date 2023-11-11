@@ -9,6 +9,7 @@ from clang.cindex import (
     TranslationUnitLoadError,
     Diagnostic,
     AccessSpecifier,
+    Cursor,
 )
 
 import argparse
@@ -128,10 +129,10 @@ def argv_from_compdb(directory, arguments) -> [str]:
     return argv
 
 
-class Arg:
-    def __init__(self, name: str, type: str):
-        self.name = name
-        self.type = type
+class Arg(object):
+    def __init__(self, c: Cursor):
+        self.name = str(c.spelling)
+        self.type = str(c.type.spelling)
 
     def __eq__(self, other):
         if not isinstance(other, Arg):
@@ -139,26 +140,22 @@ class Arg:
         return self.name == other.name and self.type == other.type
 
 
-class Func:
-    def __init__(
-        self,
-        name: str,
-        parent: str,
-        namespace: [str],
-        args: [Arg],
-        return_type: str,
-        file: str,
-        line: int,
-        has_return_type: bool,
-    ):
-        self.name = name
-        self.parent = parent
-        self.namespace = namespace
-        self.args = args
-        self.return_type = return_type
-        self.file = file
-        self.line = line
-        self.has_return_type = has_return_type
+class Func(object):
+    def __init__(self, c: Cursor):
+        self.name = c.spelling
+        self.parent = get_parent(c)
+        self.namespace = get_namespace(c)
+        self.return_type = str(c.result_type.spelling)
+        self.file = str(c.location.file)
+        self.line = int(c.location.line)
+        self.is_ctor = (
+            c.kind == CursorKind.CONSTRUCTOR or c.kind == CursorKind.DESTRUCTOR
+        )
+        self.is_const = c.is_const_method()
+
+        self.args = []
+        for arg in c.get_arguments():
+            self.args.append(Arg(arg))
 
         self.full_name = self.__full_name()
 
@@ -178,22 +175,26 @@ class Func:
         if args != "":
             args = args[: len(args) - 2]
 
-        if self.has_return_type:
+        if self.is_ctor:
+            return "%s::%s(%s) {}" % (
+                self.parent,
+                self.name,
+                args,
+            )
+        else:
             body = ""
             if self.return_type != "void":
                 body = " return {}; "
-            return "auto %s::%s(%s) -> %s {%s}" % (
-                self.parent,
-                self.name,
-                args,
+            extras = ""
+            if self.is_const:
+                extras += " const"
+            return "%s %s::%s(%s) %s {%s}" % (
                 self.return_type,
-                body,
-            )
-        else:
-            return "auto %s::%s(%s) {}" % (
                 self.parent,
                 self.name,
                 args,
+                extras,
+                body,
             )
 
     def __full_name(self):
@@ -252,6 +253,7 @@ def parse_file(root_dir: str, build_dir: str, filepath: str, typename: str) -> [
 
     kinds = [
         CursorKind.CONSTRUCTOR,
+        CursorKind.DESTRUCTOR,
         CursorKind.CXX_METHOD,
         CursorKind.FUNCTION_DECL,
         CursorKind.FUNCTION_TEMPLATE,
@@ -262,33 +264,16 @@ def parse_file(root_dir: str, build_dir: str, filepath: str, typename: str) -> [
     for c in tu.cursor.walk_preorder():
         if not str(c.location.file).startswith(root_dir):
             continue
-
         if c.kind not in kinds:
             continue
-
         if c.access_specifier != AccessSpecifier.PUBLIC:
             continue
+        if c.is_default_method():
+            continue
+        if c.is_deleted_method():
+            continue
 
-        args = []
-        for arg in c.get_arguments():
-            args.append(
-                Arg(
-                    name=str(arg.spelling),
-                    type=str(arg.type.spelling),
-                )
-            )
-
-        fn = Func(
-            name=c.spelling,
-            parent=get_parent(c),
-            namespace=get_namespace(c),
-            args=args,
-            return_type=str(c.result_type.spelling),
-            file=str(c.location.file),
-            line=int(c.location.line),
-            has_return_type=(c.kind != CursorKind.CONSTRUCTOR),
-        )
-
+        fn = Func(c)
         if typename is not None:
             if not fn.full_name.startswith(typename):
                 continue
@@ -317,15 +302,6 @@ def generate_file(all_funcs: [Func], filepath: str, output_file: str, header_ext
 
     s = ""
 
-    s += "// GENERATED FILE, DO NOT EDIT!\n"
-    s += "// clang-format off\n"
-    s += "// generated with: cppmuck %s\n" % (" ".join(sys.argv[1:]))
-    s += "// clang-format on\n\n"
-
-    s += '#include "%s"\n\n' % (
-        os.path.splitext(os.path.basename(filepath))[0] + header_ext
-    )
-
     for ns, funcs in ns_to_funcs.items():
         ns_list = ns.split("::")
 
@@ -338,6 +314,8 @@ def generate_file(all_funcs: [Func], filepath: str, output_file: str, header_ext
 
         for _ in ns_list:
             s += "}\n"
+
+        s+= "\n"
 
     out = "out.cpp"
     if output_file is not None:
@@ -394,11 +372,10 @@ def main():
     end = time.perf_counter_ns()
     print("parse: %f s" % ((end - start) / 1e9))
 
-    if args.typename is not None:
-        start = time.perf_counter_ns()
-        generate_file(all_funcs, args.filepath, args.output_file, args.header_ext)
-        end = time.perf_counter_ns()
-        print("generate: %f s" % ((end - start) / 1e9))
+    start = time.perf_counter_ns()
+    generate_file(all_funcs, args.filepath, args.output_file, args.header_ext)
+    end = time.perf_counter_ns()
+    print("generate: %f s" % ((end - start) / 1e9))
 
 
 if __name__ == "__main__":
