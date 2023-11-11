@@ -149,6 +149,7 @@ class Func:
         return_type: str,
         file: str,
         line: int,
+        has_return_type: bool,
     ):
         self.name = name
         self.parent = parent
@@ -157,6 +158,7 @@ class Func:
         self.return_type = return_type
         self.file = file
         self.line = line
+        self.has_return_type = has_return_type
 
         self.full_name = self.__full_name()
 
@@ -175,16 +177,24 @@ class Func:
             args += f"{arg.type} {arg.name}, "
         if args != "":
             args = args[: len(args) - 2]
-        body = ""
-        if self.return_type != "void":
-            body = " return {}; "
-        return "auto %s::%s(%s) -> %s {%s}" % (
-            self.parent,
-            self.name,
-            args,
-            self.return_type,
-            body,
-        )
+
+        if self.has_return_type:
+            body = ""
+            if self.return_type != "void":
+                body = " return {}; "
+            return "auto %s::%s(%s) -> %s {%s}" % (
+                self.parent,
+                self.name,
+                args,
+                self.return_type,
+                body,
+            )
+        else:
+            return "auto %s::%s(%s) {}" % (
+                self.parent,
+                self.name,
+                args,
+            )
 
     def __full_name(self):
         result = ""
@@ -276,6 +286,7 @@ def parse_file(root_dir: str, build_dir: str, filepath: str, typename: str) -> [
             return_type=str(c.result_type.spelling),
             file=str(c.location.file),
             line=int(c.location.line),
+            has_return_type=(c.kind != CursorKind.CONSTRUCTOR),
         )
 
         if typename is not None:
