@@ -308,7 +308,7 @@ def parse_file(root_dir: str, build_dir: str, filepath: str, typename: str) -> [
     return all_funcs
 
 
-def generate_file(all_funcs: [Func], filepath: str, output_file: str):
+def generate_file(all_funcs: [Func], filepath: str, output_file: str, header_ext: str):
     ns_to_funcs = {}
     for fn in all_funcs:
         if fn.namespace not in ns_to_funcs:
@@ -323,7 +323,7 @@ def generate_file(all_funcs: [Func], filepath: str, output_file: str):
     s += "// clang-format on\n\n"
 
     s += '#include "%s"\n\n' % (
-        os.path.splitext(os.path.basename(filepath))[0] + ".hpp"
+        os.path.splitext(os.path.basename(filepath))[0] + header_ext
     )
 
     for ns, funcs in ns_to_funcs.items():
@@ -370,6 +370,11 @@ def main():
         help="Path to output file",
     )
     parser.add_argument(
+        "--header-ext",
+        default=".hpp",
+        help="Extension of the header file",
+    )
+    parser.add_argument(
         "filepath",
         help="Path to the source file which contains the type you want, relative to -r",
         type=str,
@@ -391,7 +396,7 @@ def main():
 
     if args.typename is not None:
         start = time.perf_counter_ns()
-        generate_file(all_funcs, args.filepath, args.output_file)
+        generate_file(all_funcs, args.filepath, args.output_file, args.header_ext)
         end = time.perf_counter_ns()
         print("generate: %f s" % ((end - start) / 1e9))
 
