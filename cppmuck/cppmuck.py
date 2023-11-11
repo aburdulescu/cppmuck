@@ -83,7 +83,7 @@ def args_from_driver_output(output):
     return r
 
 
-def argv_from_compdb(directory, arguments) -> [str]:
+def argv_from_compdb(directory, arguments) -> list[str]:
     argv = []
     for a in arguments:
         if a == "-fno-aggressive-loop-optimizations":
@@ -211,7 +211,12 @@ class Func(object):
         return result
 
 
-def parse_file(root_dir: str, build_dir: str, filepath: str, typename: str) -> []:
+def parse_file(
+    root_dir: str,
+    build_dir: str,
+    filepath: str,
+    typenames: list[str],
+) -> []:
     try:
         comp_db = CompilationDatabase.fromDirectory(build_dir)
     except CompilationDatabaseError:
@@ -274,8 +279,14 @@ def parse_file(root_dir: str, build_dir: str, filepath: str, typename: str) -> [
             continue
 
         fn = Func(c)
-        if typename is not None:
-            if not fn.full_name.startswith(typename):
+
+        if typenames:
+            found = False
+            for tn in typenames:
+                if fn.full_name.startswith(tn):
+                    found = True
+                    break
+            if not found:
                 continue
 
         if fn not in all_funcs:
@@ -317,11 +328,7 @@ def generate_file(all_funcs: [Func], filepath: str, output_file: str):
 
         s += "\n"
 
-    out = "out.cpp"
-    if output_file is not None:
-        out = output_file
-
-    with open(out, "w") as f:
+    with open(output_file, "w") as f:
         f.write(s)
 
 
@@ -332,20 +339,23 @@ def main():
     parser.add_argument(
         "-r",
         "--root-dir",
-        help="Project root path",
-        required=True,
+        help="Project root path, default is current directory",
+        type=str,
+        default=".",
     )
     parser.add_argument(
         "-b",
         "--build-dir",
-        help="Path to the directory where the compilation database is stored, relative to -r",
+        help="Path to the directory where the compilation database is stored, relative to -r, default is b/",
         type=str,
-        required=True,
+        default="b",
     )
     parser.add_argument(
         "-o",
         "--output-file",
-        help="Path to output file",
+        help="Path to output file, default is cppmuck.cpp",
+        type=str,
+        default="cppmuck.cpp",
     )
     parser.add_argument(
         "filepath",
@@ -353,7 +363,11 @@ def main():
         type=str,
     )
     parser.add_argument(
-        "typename", help="Name of the type you want", type=str, nargs="?"
+        "typenames",
+        metavar="typename",
+        help="Name of the type you want",
+        type=str,
+        nargs="*",
     )
 
     args = parser.parse_args()
@@ -361,9 +375,10 @@ def main():
     args.root_dir = os.path.abspath(args.root_dir)
     args.build_dir = os.path.abspath(os.path.join(args.root_dir, args.build_dir))
     args.filepath = os.path.abspath(os.path.join(args.root_dir, args.filepath))
+    args.output_file = os.path.abspath(args.output_file)
 
     start = time.perf_counter_ns()
-    all_funcs = parse_file(args.root_dir, args.build_dir, args.filepath, args.typename)
+    all_funcs = parse_file(args.root_dir, args.build_dir, args.filepath, args.typenames)
     end = time.perf_counter_ns()
     print("parse: %f s" % ((end - start) / 1e9))
 
