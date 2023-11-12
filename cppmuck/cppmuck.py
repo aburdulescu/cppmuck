@@ -287,8 +287,6 @@ def parse_file(
             if not found:
                 continue
 
-        print(c.spelling, get_func_body(c))
-
         if fn not in all_funcs:
             print(
                 "%s:%d %s %s"
@@ -299,6 +297,7 @@ def parse_file(
                     fn,
                 )
             )
+            print(get_func_body(c))
             all_funcs.append(fn)
 
     return all_funcs
