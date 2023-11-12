@@ -5,11 +5,11 @@ from clang.cindex import (
     CursorKind,
     CompilationDatabase,
     CompilationDatabaseError,
-    TranslationUnit,
     TranslationUnitLoadError,
     Diagnostic,
     AccessSpecifier,
     Cursor,
+    SourceRange,
 )
 
 import argparse
@@ -164,6 +164,8 @@ class Func(object):
             return NotImplemented
         return (
             self.name == other.name
+            and self.parent == other.parent
+            and self.namespace == other.namespace
             and self.args == self.args
             and self.return_type == other.return_type
         )
@@ -237,13 +239,8 @@ def parse_file(
 
     argv = argv_from_compdb(compile_command.directory, compile_command.arguments)
 
-    parse_options = TranslationUnit.PARSE_SKIP_FUNCTION_BODIES
     try:
-        tu = index.parse(
-            None,
-            args=argv[1:],
-            options=parse_options,
-        )
+        tu = index.parse(None, args=argv[1:])
     except TranslationUnitLoadError:
         print("\nerror parsing translation unit")
         sys.exit(1)
@@ -277,6 +274,8 @@ def parse_file(
             continue
         if c.is_deleted_method():
             continue
+        if not c.is_definition():
+            continue
 
         fn = Func(c)
 
@@ -288,6 +287,9 @@ def parse_file(
                     break
             if not found:
                 continue
+
+        print(c.spelling, [(tok.spelling, tok.kind) for tok in c.get_tokens()])
+        print("body:", get_func_body(c))
 
         if fn not in all_funcs:
             print(
@@ -303,6 +305,17 @@ def parse_file(
 
     return all_funcs
 
+
+def get_func_body(c: Cursor) -> SourceRange:
+    def find(s: str):
+        for tok in c.get_tokens():
+            if tok.spelling == s:
+                return tok.location
+
+    start = find("{")
+    end = find("}")
+
+    return SourceRange.from_locations(start, end)
 
 def generate_file(all_funcs: [Func], filepath: str, output_file: str):
     ns_to_funcs = {}
