@@ -9,7 +9,6 @@ from clang.cindex import (
     Diagnostic,
     AccessSpecifier,
     Cursor,
-    SourceRange,
 )
 
 import argparse
@@ -288,8 +287,7 @@ def parse_file(
             if not found:
                 continue
 
-        print(c.spelling, [(tok.spelling, tok.kind) for tok in c.get_tokens()])
-        print("body:", get_func_body(c))
+        print(c.spelling, get_func_body(c))
 
         if fn not in all_funcs:
             print(
@@ -306,16 +304,35 @@ def parse_file(
     return all_funcs
 
 
-def get_func_body(c: Cursor) -> SourceRange:
-    def find(s: str):
-        for tok in c.get_tokens():
-            if tok.spelling == s:
-                return tok.location
+def get_func_body(c: Cursor) -> str:
+    tokens = [tok for tok in c.get_tokens()]
 
-    start = find("{")
-    end = find("}")
+    start = None
+    for tok in tokens:
+        if tok.spelling == "{":
+            start = tok.location
+            break
+    assert start is not None
 
-    return SourceRange.from_locations(start, end)
+    end = None
+    for tok in reversed(tokens):
+        if tok.spelling == "}":
+            end = tok.location
+            break
+    assert end is not None
+
+    print(start.line, start.column, end.line, end.column)
+
+    s = ""
+    with open(c.location.file.name, "r") as f:
+        lines = f.readlines()
+        s += lines[start.line-1][start.column-1:]
+        for i in range(start.line, end.line - 1):
+            s += lines[i]
+        s += lines[end.line-1][:end.column]
+
+    return s
+
 
 def generate_file(all_funcs: [Func], filepath: str, output_file: str):
     ns_to_funcs = {}
