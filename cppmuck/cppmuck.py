@@ -305,20 +305,23 @@ def parse_file(
 
 def get_func_body(c: Cursor) -> str:
     tokens = [tok for tok in c.get_tokens()]
+    print([tok.spelling for tok in tokens])
 
     start = None
     for tok in tokens:
         if tok.spelling == "{":
             start = tok.location
             break
-    assert start is not None
+    if start is None:
+        return ""
 
     end = None
     for tok in reversed(tokens):
         if tok.spelling == "}":
             end = tok.location
             break
-    assert end is not None
+    if end is None:
+        return ""
 
     s = ""
     with open(c.location.file.name, "r") as f:
