@@ -321,8 +321,6 @@ def get_func_body(c: Cursor) -> str:
             break
     assert end is not None
 
-    print(start.line, start.column, end.line, end.column)
-
     s = ""
     with open(c.location.file.name, "r") as f:
         lines = f.readlines()
