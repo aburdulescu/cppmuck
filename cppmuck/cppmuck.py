@@ -288,16 +288,16 @@ def parse_file(
                 continue
 
         if fn not in all_funcs:
-            print(
-                "%s:%d %s %s"
-                % (
-                    os.path.relpath(fn.file, root_dir),
-                    fn.line,
-                    fn.namespace,
-                    fn,
-                )
-            )
-            print(get_func_body(c))
+            # print(
+            #     "%s:%d %s %s"
+            #     % (
+            #         os.path.relpath(fn.file, root_dir),
+            #         fn.line,
+            #         fn.namespace,
+            #         fn,
+            #     )
+            # )
+            # print(get_func_body(c))
             all_funcs.append(fn)
 
     return all_funcs
