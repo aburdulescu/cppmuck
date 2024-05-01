@@ -139,6 +139,9 @@ class Arg(object):
             return NotImplemented
         return self.name == other.name and self.type == other.type
 
+    def __repr__(self):
+        return '{type="%s", name="%s"}' % (self.type, self.name)
+
 
 class Func(object):
     def __init__(self, c: Cursor):
@@ -166,13 +169,20 @@ class Func(object):
     def __eq__(self, other):
         if not isinstance(other, Func):
             return NotImplemented
-        return (
-            self.name == other.name
-            and self.parent == other.parent
-            and self.namespace == other.namespace
-            and self.args == self.args
-            and self.return_type == other.return_type
-        )
+        if self.name != other.name:
+            return False
+        if self.parent != other.parent:
+            return False
+        if self.namespace != other.namespace:
+            return False
+        if self.return_type != other.return_type:
+            return False
+        if len(self.args) != len(other.args):
+            return False
+        for arg in self.args:
+            if arg not in other.args:
+                return False
+        return True
 
     def __str__(self):
         args = ""
@@ -307,6 +317,12 @@ def parse_file(
             # )
             # print(get_func_body(c))
             all_funcs.append(fn)
+        else:
+            dup = None
+            for v in all_funcs:
+                if v == fn:
+                    dup = v
+            print(f"warning: function '{fn}' is a duplicate of '{dup}'")
 
     return all_funcs
 
@@ -334,7 +350,7 @@ def get_func_body(c: Cursor) -> str:
     s = ""
     with open(c.location.file.name, "r") as f:
         lines = f.readlines()
-        s += lines[start.line - 1][start.column - 1:]
+        s += lines[start.line - 1][start.column - 1 :]
         for i in range(start.line, end.line - 1):
             s += lines[i]
         s += lines[end.line - 1][: end.column]
