@@ -8,7 +8,7 @@ setup(
     description="Generate C++ muck(mocks/stubs) needed for tests.",
     packages=["cppmuck"],
     install_requires=[
-        "libclang==16.0.0",
+        "libclang==18.1.1",
     ],
     entry_points={
         "console_scripts": [
