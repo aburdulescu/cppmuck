@@ -9,6 +9,7 @@ from clang.cindex import (
     Diagnostic,
     AccessSpecifier,
     Cursor,
+    ExceptionSpecificationKind,
 )
 
 import argparse
@@ -152,6 +153,10 @@ class Func(object):
         )
         self.is_const = c.is_const_method()
 
+        self.except_kind = ""
+        if c.exception_specification_kind == ExceptionSpecificationKind.BASIC_NOEXCEPT:
+            self.except_kind = "noexcept"
+
         self.args = []
         for arg in c.get_arguments():
             self.args.append(Arg(arg))
@@ -177,10 +182,11 @@ class Func(object):
             args = args[: len(args) - 2]
 
         if self.is_ctor:
-            return "%s::%s(%s) {}" % (
+            return "%s::%s(%s) %s {}" % (
                 self.parent,
                 self.name,
                 args,
+                self.except_kind,
             )
         else:
             body = ""
@@ -189,6 +195,8 @@ class Func(object):
             extras = ""
             if self.is_const:
                 extras += " const"
+            if self.except_kind != "":
+                extras += " " + self.except_kind
             return "%s %s::%s(%s) %s {%s}" % (
                 self.return_type,
                 self.parent,
@@ -326,10 +334,10 @@ def get_func_body(c: Cursor) -> str:
     s = ""
     with open(c.location.file.name, "r") as f:
         lines = f.readlines()
-        s += lines[start.line-1][start.column-1:]
+        s += lines[start.line - 1][start.column - 1:]
         for i in range(start.line, end.line - 1):
             s += lines[i]
-        s += lines[end.line-1][:end.column]
+        s += lines[end.line - 1][: end.column]
 
     return s
 
@@ -342,6 +350,9 @@ def generate_file(all_funcs: [Func], filepath: str, output_file: str):
         ns_to_funcs[fn.namespace].append(fn)
 
     s = ""
+
+    filename = os.path.basename(filepath)
+    s += '#include "%s.hpp"\n\n' % (os.path.splitext(filename)[0])
 
     for ns, funcs in ns_to_funcs.items():
         ns_list = ns.split("::")
