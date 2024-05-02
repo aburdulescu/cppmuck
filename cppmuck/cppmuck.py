@@ -306,16 +306,9 @@ def parse_file(
                 continue
 
         if fn not in all_funcs:
-            # print(
-            #     "%s:%d %s %s"
-            #     % (
-            #         os.path.relpath(fn.file, root_dir),
-            #         fn.line,
-            #         fn.namespace,
-            #         fn,
-            #     )
-            # )
-            # print(get_func_body(c))
+            # if c.kind == CursorKind.CONSTRUCTOR:
+            #     for child in c.get_children():
+            #         print("==", child.kind, child.spelling, child.type.spelling)
             all_funcs.append(fn)
         else:
             dup = None
@@ -325,37 +318,6 @@ def parse_file(
             print(f"warning: function '{fn}' is a duplicate of '{dup}'")
 
     return all_funcs
-
-
-def get_func_body(c: Cursor) -> str:
-    tokens = [tok for tok in c.get_tokens()]
-    print([tok.spelling for tok in tokens])
-
-    start = None
-    for tok in tokens:
-        if tok.spelling == "{":
-            start = tok.location
-            break
-    if start is None:
-        return ""
-
-    end = None
-    for tok in reversed(tokens):
-        if tok.spelling == "}":
-            end = tok.location
-            break
-    if end is None:
-        return ""
-
-    s = ""
-    with open(c.location.file.name, "r") as f:
-        lines = f.readlines()
-        s += lines[start.line - 1][start.column - 1 :]
-        for i in range(start.line, end.line - 1):
-            s += lines[i]
-        s += lines[end.line - 1][: end.column]
-
-    return s
 
 
 def generate_file(all_funcs: [Func], filepath: str, output_file: str):
@@ -437,12 +399,12 @@ def main():
     start = time.perf_counter_ns()
     all_funcs = parse_file(args.root_dir, args.build_dir, args.filepath, args.typenames)
     end = time.perf_counter_ns()
-    print("parse: %f s" % ((end - start) / 1e9))
+    print("parse: %f seconds" % ((end - start) / 1e9))
 
     start = time.perf_counter_ns()
     generate_file(all_funcs, args.filepath, args.output_file)
     end = time.perf_counter_ns()
-    print("generate: %f s" % ((end - start) / 1e9))
+    print("generate: %f seconds" % ((end - start) / 1e9))
 
 
 if __name__ == "__main__":
